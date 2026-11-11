@@ -11,3 +11,7 @@ button { background: var(--teal); color: #ffffff; border: 0; border-radius: 6px;
 .error { color: var(--red); font-weight: bold; }                        /* Errors in red */
 .warning { color: var(--amber); font-weight: bold; }                    /* Warnings in amber */
 .result { color: var(--green); font-weight: bold; }                     /* Results in green */
+table { border-collapse: collapse; width: 100%; background: #ffffff; margin-bottom: 1rem; }  /* NEW: full-width tables with joined borders */
+th, td { border: 1px solid #d1d5db; padding: 0.4rem 0.6rem; text-align: left; }  /* NEW: light borders and padding in every cell */
+th { background: var(--navy); color: #ffffff; }                         /* NEW: dark heading cells */
+svg { background: #ffffff; max-width: 100%; border-radius: 8px; }       /* NEW: the chart sits on a white card and shrinks on small screens */
