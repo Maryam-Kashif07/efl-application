@@ -52,3 +52,39 @@ def test_unknown_currency_is_rejected(client):                          # A code
 def test_missing_body_is_rejected(client):                              # A request with no JSON at all
     response = client.post("/api/convert")                              # No body
     assert response.status_code == 400                                  # Bad Request, not a crash
+
+def post_quote(client, lump, monthly, plan_id=2):                       # NEW helper: send one quote request
+    return client.post("/api/quote", json={"lump_sum": lump, "monthly": monthly, "plan_id": plan_id})  # json= sets the body and header
+
+def test_quote_route_returns_all_plans_and_recommendation(client):      # NEW: the quote route works
+    response = post_quote(client, "1000", "200", 2)                     # Chosen plan 2
+    data = response.get_json()                                          # Read the reply
+    assert response.status_code == 200                                  # OK
+    assert len(data["plans"]) == 3                                      # Three plans
+    assert data["recommended_plan_id"] == 3                             # Plan 3 wins
+    chosen = next(p for p in data["plans"] if p["plan_id"] == 2)        # The chosen plan
+    assert len(chosen["results"]) == 6                                  # Six result rows
+    assert chosen["results"][0]["final_value"].count(".") == 1          # Text with a decimal point
+
+def test_quote_route_rejects_plan_rule_breaks(client):                  # NEW: plan rules reach the user
+    response = post_quote(client, "100", "50", 2)                       # Plan 2 needs a 300 lump sum
+    assert response.status_code == 400                                  # Bad Request
+    assert "300.00" in response.get_json()["error"]                     # The message names the limit
+
+def test_quote_route_rejects_bad_numbers(client):                       # NEW: junk is rejected
+    assert post_quote(client, "abc", "50", 1).status_code == 400        # Not a number
+    assert post_quote(client, "0", "-5", 1).status_code == 400          # Negative
+
+def test_quote_is_stored_with_six_results(client, db_file):             # NEW: the quote reaches the database
+    post_quote(client, "1000", "200", 3)                                # Make a quote
+    connection = database.get_connection(db_file)                       # Open the test database
+    quotes_count = connection.execute("SELECT COUNT(*) FROM quote").fetchone()[0]  # Count quotes
+    results_count = connection.execute("SELECT COUNT(*) FROM quote_result").fetchone()[0]  # Count results
+    connection.close()                                                  # Release the file
+    assert (quotes_count, results_count) == (1, 6)                      # One quote, six results
+
+def test_save_quote_marks_it_saved(client):                             # NEW: the Save button route
+    quote_id = post_quote(client, "1000", "200", 3).get_json()["quote_id"]  # Make a quote
+    response = client.post("/api/quotes/" + str(quote_id) + "/save")    # Save it
+    assert response.status_code == 200                                  # OK
+    assert client.post("/api/quotes/999/save").status_code == 404       # An unknown quote is Not Found
