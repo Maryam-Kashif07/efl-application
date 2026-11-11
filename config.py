@@ -49,3 +49,10 @@ TAX_RULES = [                                                           # Tax ru
 
 YEARS = (1, 5, 10)                     # Time frames shown on every quote, in years
 MAX_QUOTE_INPUT = Decimal("10000000")  # Upper sanity limit for lump sum and monthly amount
+
+DEV_SECRET_KEY = "change-me-before-you-deploy"      # Signs the login cookie; a real site sets EFL_SECRET_KEY instead
+PASSWORD_MIN_LENGTH = 8                             # Shortest password we accept
+USE_LIVE_RATES = True                               # True: try the live rate service; tests set this to False
+RATE_URL = "https://open.er-api.com/v6/latest/USD"  # Free service that returns every rate against the US dollar
+RATE_TIMEOUT_SECONDS = 5                            # Give up on the network after five seconds
+RATE_MAX_AGE_MINUTES = 10                           # Live rates younger than this are reused, so we do not call the service on every conversion

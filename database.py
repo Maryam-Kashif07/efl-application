@@ -1,5 +1,6 @@
-import sqlite3                                                          # Python's built-in SQLite library; nothing to install
-from decimal import Decimal                                             # For exact rates
+import json                  # NEW: drafts are stored as JSON text
+import sqlite3               # Python's built-in SQLite library; nothing to install
+from decimal import Decimal
 from pathlib import Path                                                # Lets us find schema.sql whatever folder we run from
 
 import config                                                           # Our settings file
@@ -154,3 +155,92 @@ def mark_quote_saved(quote_id, user_id, db_file=None):                  # The us
         return cursor.rowcount == 1                                     # rowcount is how many rows changed
     finally:                                                            # Runs even after the return above
         connection.close()                                              # Release the file
+
+def log_error(source, message, db_file=None):                           # Add one row to the error_log table
+    """Record an internal error with its diagnostic data."""            # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        connection.execute("INSERT INTO error_log (source, message) VALUES (?, ?)", (source, message))  # Store where it failed and what happened
+        connection.commit()                                             # Save permanently
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+
+def create_user(name, email, phone, password_hash, db_file=None):       # Add a customer and keep their contact details
+    """Insert a user and return the new user id."""                     # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        cursor = connection.execute("INSERT INTO user (name, email, phone, password_hash) VALUES (?, ?, ?, ?)", (name, email, phone, password_hash))  # Four values; UNIQUE on email stops duplicates
+        connection.commit()                                             # Save permanently
+        return cursor.lastrowid                                         # The new user's id
+    finally:                                                            # Runs even after the return above
+        connection.close()                                              # Release the file
+
+def get_user_by_email(email, db_file=None):                             # Find a user for login
+    """Return the user row as a dictionary, or None."""                 # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        row = connection.execute("SELECT user_id, name, email, password_hash FROM user WHERE email = ?", (email,)).fetchone()  # Look the email up; the ? placeholder blocks SQL injection
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+    return dict(row) if row else None                                   # A dictionary, or None when there is no such user
+
+def has_fresh_live_rate(db_file=None):                                  # Did we load live rates recently?
+    """True if a live rate younger than RATE_MAX_AGE_MINUTES is stored."""  # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        row = connection.execute("SELECT 1 FROM exchange_rate WHERE source = 'live' AND fetched_at > datetime('now', ?) LIMIT 1", ("-" + str(config.RATE_MAX_AGE_MINUTES) + " minutes",)).fetchone()  # datetime('now', '-10 minutes') is ten minutes ago
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+    return row is not None                                              # True when a row was found
+
+def save_rates(rates, source, db_file=None):                            # Store a new set of rates
+    """Insert one exchange_rate row for each currency in the dictionary."""  # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        for code, rate in rates.items():                                # One row per currency
+            connection.execute("INSERT INTO exchange_rate (currency_code, rate_to_usd, source) VALUES (?, ?, ?)", (code, float(rate), source))  # Add the rate with its source
+        connection.commit()                                             # Save everything together
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+
+def latest_rate_time(db_file=None):                                     # When were the stored rates last updated?
+    """Return the newest fetched_at text, or None."""                   # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        row = connection.execute("SELECT MAX(fetched_at) AS latest FROM exchange_rate").fetchone()  # The newest time
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+    return row["latest"]                                                # Text such as 2026-11-05 10:30:00, or None
+
+def get_history(user_id, db_file=None):                                 # Everything the history page shows
+    """Return the user's transactions and saved quotes."""              # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        transactions = connection.execute("SELECT transaction_id, created_at, from_currency, to_currency, amount, rate_used, fee_percent, fee_usd, converted_amount FROM conversion_transaction WHERE user_id = ? ORDER BY transaction_id DESC LIMIT 100", (user_id,)).fetchall()  # Newest first, at most 100
+        quote_rows = connection.execute("SELECT q.quote_id, q.created_at, q.lump_sum, q.monthly_amount, p.name AS plan_name FROM quote q JOIN investment_plan p ON p.plan_id = q.plan_id WHERE q.user_id = ? AND q.is_saved = 1 ORDER BY q.quote_id DESC", (user_id,)).fetchall()  # Saved quotes only; JOIN adds the plan name
+        quotes_out = []                                                 # We build the quotes here
+        for q in quote_rows:                                            # One loop per saved quote
+            results = connection.execute("SELECT scenario, years, final_value, total_profit, total_fees, total_tax FROM quote_result WHERE quote_id = ? ORDER BY scenario, years", (q["quote_id"],)).fetchall()  # Its result rows
+            quotes_out.append({**dict(q), "results": [dict(r) for r in results]})  # Quote plus results as one dictionary
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+    return {"transactions": [dict(t) for t in transactions], "quotes": quotes_out}  # Both lists as plain dictionaries
+
+def save_draft(user_id, form_data, db_file=None):                       # Keep unsaved form data
+    """Insert a draft and return its id."""                             # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        cursor = connection.execute("INSERT INTO draft (user_id, form_data) VALUES (?, ?)", (user_id, json.dumps(form_data)))  # The form values are stored as JSON text
+        connection.commit()                                             # Save permanently
+        return cursor.lastrowid                                         # The draft id
+    finally:                                                            # Runs even after the return above
+        connection.close()                                              # Release the file
+
+def get_draft(draft_id, user_id, db_file=None):                         # Load a draft that belongs to this user
+    """Return the draft's form data, or None."""                        # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        row = connection.execute("SELECT form_data FROM draft WHERE draft_id = ? AND user_id = ?", (draft_id, user_id)).fetchone()  # The user_id check stops people reading each other's drafts
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+    return json.loads(row["form_data"]) if row else None                # Turn the stored JSON back into a dictionary
