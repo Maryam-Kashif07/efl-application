@@ -3,9 +3,12 @@ import database                                                         # To rea
 import app as app_module                                                # Our Flask app, under a nickname so it does not clash with the app name
 
 @pytest.fixture                                                         # Set-up code the tests can ask for
-def client(db_file):                                                    # A fake browser connected to a temporary database
-    app_module.app.config["DB_FILE"] = db_file                          # Point the app at the test database
-    return app_module.app.test_client()                                 # Flask's built-in fake browser
+def client(db_file):                                    # A fake browser connected to a temporary database
+    app_module.app.config["DB_FILE"] = db_file          # Point the app at the test database
+    test_client = app_module.app.test_client()          # Flask's built-in fake browser
+    with test_client.session_transaction() as session:  # NEW: open the fake browser's login cookie
+        session["user_id"] = 1                          # NEW: sign in as the demo user, because every route is private now
+    return test_client
 
 def post_convert(client, amount, from_code="GBP", to_code="USD"):       # Helper: send one conversion request
     return client.post("/api/convert", json={"amount": amount, "from": from_code, "to": to_code})  # json= sets the body and the header for us
