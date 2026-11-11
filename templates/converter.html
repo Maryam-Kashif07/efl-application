@@ -1,0 +1,20 @@
+{% extends "base.html" %}                                               {# Use the shared page layout #}
+{% block title %}Currency converter{% endblock %}                       {# Text for the browser tab #}
+{% block content %}                                                     {# Start of this page's content #}
+  <h1>Currency converter</h1>                                           <!-- Main heading -->
+  <form id="convert-form">                                              <!-- The form; app.js finds it by this id -->
+    <label for="amount">Amount (300 to 5,000)</label>                   <!-- Label linked to the input below; shows the allowed range -->
+    <input id="amount" type="text" inputmode="decimal" required>        <!-- Text box; type text so our server does the validating -->
+    <label for="from">From</label>                                      <!-- Label for the first drop-down -->
+    <select id="from" class="currency-list"></select>                   <!-- Empty list; app.js fills it from /api/currencies -->
+    <label for="to">To</label>                                          <!-- Label for the second drop-down -->
+    <select id="to" class="currency-list"></select>                     <!-- Empty list; app.js fills it too -->
+    <button type="submit">Convert</button>                              <!-- Sends the form -->
+  </form>                                                               <!-- End of the form -->
+  <p id="warning" class="warning"></p>                                  <!-- Area for warnings, such as using an older rate (Thursday) -->
+  <p id="error" class="error" role="alert"></p>                         <!-- Area for error messages; role alert lets screen readers announce it -->
+  <p id="result" class="result"></p>                                    <!-- Area for the answer -->
+{% endblock %}                                                          {# End of the content block #}
+{% block scripts %}                                                     {# Start of this page's script files #}
+  <script src="{{ url_for('static', filename='js/converter.js') }}"></script>  {# This page's own JavaScript #}
+{% endblock %}                                                          {# End of the scripts block #}

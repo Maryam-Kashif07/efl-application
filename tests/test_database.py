@@ -3,6 +3,7 @@ from decimal import Decimal                                             # Exact 
 
 import pytest                                                           # For pytest.raises
 import database                                                         # The file we are testing
+import init_db as init_db_script                                        # The command-line database initializer
 
 def count(db_file, table):                                              # Helper: how many rows are in a table?
     connection = database.get_connection(db_file)                       # Open the test database
@@ -20,6 +21,17 @@ def test_seed_data_is_loaded(db_file):                                  # Starti
     assert count(db_file, "currency") == 6                              # Six currencies
     assert count(db_file, "investment_plan") == 3                       # Three plans
     assert count(db_file, "tax_rule") == 3                              # Three tax rules
+
+def test_init_db_script_seeds_all_exchange_rates(tmp_path):              # The script must load reference data too
+    path = str(tmp_path / "script.db")                                  # Use a temporary database
+    init_db_script.main(path)                                            # Run the same initializer as the command line
+    connection = database.get_connection(path)                           # Open the initialized database
+    rows = connection.execute(                                           # Read every currency rate
+        "SELECT currency_code, rate_to_usd, source FROM exchange_rate ORDER BY currency_code"
+    ).fetchall()
+    connection.close()                                                  # Release the file
+    assert [row["currency_code"] for row in rows] == ["BRL", "EUR", "GBP", "JPY", "TRY", "USD"]
+    assert all(row["source"] == "sample" for row in rows)               # Seeded rates are marked as samples
 
 def test_running_init_twice_adds_nothing(db_file):                      # init_db must be safe to repeat
     database.init_db(db_file)                                           # Run it a second time
@@ -49,3 +61,11 @@ def test_foreign_key_blocks_unknown_user(db_file):                      # Foreig
     transaction = {"from_currency": "GBP", "to_currency": "USD", "amount": 300, "rate_used": 1.3, "fee_percent": 3.5, "fee_usd": 13.65, "converted_amount": 390}  # Same sample, shorter
     with pytest.raises(sqlite3.IntegrityError):                         # The database must refuse
         database.save_transaction(999, transaction, db_file)            # There is no user 999
+
+def test_get_plans_returns_decimals_and_rules(db_file):                 # NEW: plans load correctly
+    plans = database.get_plans(db_file)                                 # Load the plans
+    assert [p["name"] for p in plans] == ["Basic Savings Plan", "Savings Plan Plus", "Managed Stock Investments"]  # Names in order
+    assert plans[0]["min_lump_sum"] is None and plans[2]["max_per_year"] is None  # N/A and unlimited are None
+    assert plans[1]["monthly_fee_pct"] == Decimal("0.3")                # Exact Decimal, not a float
+    assert plans[2]["tax_rules"] == [(Decimal("12000"), Decimal("10")), (Decimal("40000"), Decimal("20"))]  # Plan 3 has two tax rules, lowest first
+    assert plans[0]["tax_rules"] == []                                  # Plan 1 has none

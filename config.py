@@ -46,3 +46,6 @@ TAX_RULES = [                                                           # Tax ru
     (3, 12000, 10),                                                     # Plan 3: 10% on profits above 12,000
     (3, 40000, 20),                                                     # Plan 3: 20% on profits above 40,000
 ]                                                                       # Plan 1 has no tax rule because its tax is 0%
+
+YEARS = (1, 5, 10)                     # Time frames shown on every quote, in years
+MAX_QUOTE_INPUT = Decimal("10000000")  # Upper sanity limit for lump sum and monthly amount

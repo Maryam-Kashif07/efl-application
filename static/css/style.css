@@ -1,0 +1,13 @@
+/* EFL styles. */
+:root { --navy: #1b2a4a; --teal: #0e7490; --amber: #b45309; --green: #15803d; --red: #b91c1c; }  /* Colours in one place; change them here to restyle the site */
+body { font-family: Arial, sans-serif; margin: 0; background: #f3f4f6; color: #1f2937; }  /* Plain font, light grey background */
+nav { background: var(--navy); padding: 0.75rem 1rem; }                 /* Dark blue menu bar */
+nav a { color: #ffffff; margin-right: 1rem; text-decoration: none; }    /* White menu links without underline */
+nav a:hover { text-decoration: underline; }                             /* Underline when the mouse is over a link */
+main { padding: 1rem; max-width: 60rem; margin: 0 auto; }               /* Centre the page content */
+form { display: grid; gap: 0.5rem; max-width: 24rem; background: #ffffff; padding: 1rem; border-radius: 8px; }  /* A white card; fields stacked with a gap */
+input, select, button { padding: 0.5rem; font-size: 1rem; }             /* Bigger, easier-to-tap controls */
+button { background: var(--teal); color: #ffffff; border: 0; border-radius: 6px; cursor: pointer; }  /* Teal button */
+.error { color: var(--red); font-weight: bold; }                        /* Errors in red */
+.warning { color: var(--amber); font-weight: bold; }                    /* Warnings in amber */
+.result { color: var(--green); font-weight: bold; }                     /* Results in green */

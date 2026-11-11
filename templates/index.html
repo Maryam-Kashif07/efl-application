@@ -1,11 +1,6 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>EFL - Hello</title>
-</head>
-<body>
-    <h1>EFL application</h1>
-    <p>{{ message }}</p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}EFL{% endblock %}
+{% block content %}
+  <h1>EFL application</h1>
+  <p>Currency conversion and savings quotes.</p>
+{% endblock %}

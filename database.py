@@ -101,3 +101,56 @@ def save_transaction(user_id, transaction, db_file=None):               # Store 
         return cursor.lastrowid                                         # The auto number SQLite gave the new row
     finally:                                                            # Runs even after the return above
         connection.close()                                              # Release the file
+
+def get_plans(db_file=None):                                            # Load the investment plans with their tax rules
+    """Return the plans as dictionaries holding Decimal values."""      # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        plan_rows = connection.execute("SELECT * FROM investment_plan ORDER BY plan_id").fetchall()  # All plans in order
+        rule_rows = connection.execute("SELECT plan_id, profit_above, tax_rate_pct FROM tax_rule ORDER BY plan_id, profit_above").fetchall()  # All tax rules, lowest threshold first
+    finally:                                                            # Runs whether or not an error happened
+        connection.close()                                              # Release the file
+    plans = []                                                          # We build the answer here
+    for row in plan_rows:                                               # One loop per plan
+        rules = [(Decimal(str(r["profit_above"])), Decimal(str(r["tax_rate_pct"]))) for r in rule_rows if r["plan_id"] == row["plan_id"]]  # This plan's rules as (threshold, percent) pairs
+        plans.append({                                                  # Add one dictionary per plan
+            "plan_id": row["plan_id"],                                  # Plan number
+            "name": row["name"],                                        # Plan name
+            "max_per_year": None if row["max_per_year"] is None else Decimal(str(row["max_per_year"])),  # None stays None (unlimited)
+            "min_monthly": Decimal(str(row["min_monthly"])),            # Minimum monthly amount
+            "min_lump_sum": None if row["min_lump_sum"] is None else Decimal(str(row["min_lump_sum"])),  # None stays None (N/A)
+            "return_min_pct": Decimal(str(row["return_min_pct"])),      # Lowest yearly return
+            "return_max_pct": Decimal(str(row["return_max_pct"])),      # Highest yearly return
+            "monthly_fee_pct": Decimal(str(row["monthly_fee_pct"])),    # Monthly fee
+            "tax_rules": rules,                                         # The tax rules for this plan
+        })                                                              # End of the dictionary
+    return plans                                                        # The finished list
+
+def save_quote(user_id, plan_id, recommended_plan_id, lump_sum, monthly, rows, db_file=None):  # Store a quote and its results
+    """Insert a quote and its result rows, and return the quote id."""  # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        cursor = connection.execute(                                    # Insert the quote row first
+            "INSERT INTO quote (user_id, plan_id, recommended_plan_id, lump_sum, monthly_amount) VALUES (?, ?, ?, ?, ?)",  # Five values
+            (user_id, plan_id, recommended_plan_id, float(lump_sum), float(monthly)),  # The values, with money as numbers
+        )                                                               # End of the INSERT
+        quote_id = cursor.lastrowid                                     # The id SQLite just gave the quote
+        for row in rows:                                                # Then one result row for each scenario and time frame
+            connection.execute(                                         # Insert a result row
+                "INSERT INTO quote_result (quote_id, scenario, years, final_value, total_profit, total_fees, total_tax) VALUES (?, ?, ?, ?, ?, ?, ?)",  # Seven values
+                (quote_id, row["scenario"], row["years"], float(row["final_value"]), float(row["total_profit"]), float(row["total_fees"]), float(row["total_tax"])),  # The values for this row
+            )                                                           # End of the INSERT
+        connection.commit()                                             # Save everything together
+        return quote_id                                                 # Give the id back
+    finally:                                                            # Runs even after the return above
+        connection.close()                                              # Release the file
+
+def mark_quote_saved(quote_id, user_id, db_file=None):                  # The user pressed Save on a quote
+    """Set is_saved for this user's quote. Return True if a row changed."""  # Docstring
+    connection = get_connection(db_file)                                # Open the database
+    try:                                                                # Always close the connection
+        cursor = connection.execute("UPDATE quote SET is_saved = 1 WHERE quote_id = ? AND user_id = ?", (quote_id, user_id))  # The AND user_id part stops people saving each other's quotes
+        connection.commit()                                             # Save permanently
+        return cursor.rowcount == 1                                     # rowcount is how many rows changed
+    finally:                                                            # Runs even after the return above
+        connection.close()                                              # Release the file

@@ -5,3 +5,9 @@ def test_home_page_loads():
     response = client.get("/")
     assert response.status_code == 200
     assert b"EFL application" in response.data
+
+def test_converter_page_loads():
+    client = app_module.app.test_client()
+    response = client.get("/converter")
+    assert response.status_code == 200
+    assert b"convert-form" in response.data
