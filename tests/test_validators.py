@@ -28,3 +28,27 @@ def test_currency_is_cleaned_and_checked():                             # Curren
     assert validators.validate_currency(" gbp ") == "GBP"               # Spaces and lower case are fixed
     with pytest.raises(InputError):                                     # Unknown code
         validators.validate_currency("ABC")                             # Not one of the six
+
+@pytest.mark.parametrize("text", ["abc", "", "-1", "NaN", "10.001", "99999999999", None])  # NEW: bad money amounts for the quote page
+def test_invalid_money_raises_input_error(text):                        # One run per bad value
+    with pytest.raises(InputError):                                     # Each must be rejected
+        validators.validate_money(text, "lump sum")                     # Try it
+
+def test_valid_money_allows_zero_and_two_places():                      # NEW: good amounts
+    assert validators.validate_money("0", "lump sum") == Decimal("0")   # Zero lump sum is fine
+    assert validators.validate_money("250.50", "monthly amount") == Decimal("250.50")  # Two decimal places are fine
+
+def test_plan_id_must_exist(db_file):                                   # NEW: the chosen plan must be real
+    import database                                                     # Imported here because only this test needs it
+    plans = database.get_plans(db_file)                                 # Load the plans
+    assert validators.validate_plan_id("2", plans)["plan_id"] == 2      # A real plan
+    for bad in ["9", "x", None]:                                        # Three bad choices
+        with pytest.raises(InputError):                                 # Each must be rejected
+            validators.validate_plan_id(bad, plans)                     # Try it
+
+def test_quote_inputs_must_meet_plan_rules(db_file):                    # NEW: the plan's rules are enforced
+    import database                                                     # Imported here because only this test needs it
+    plans = database.get_plans(db_file)                                 # Load the plans
+    with pytest.raises(InputError) as problem:                          # Plan 2 needs a 300 lump sum
+        validators.validate_quote_inputs(plans[1], Decimal("100"), Decimal("50"))  # Lump sum too small
+    assert "300.00" in str(problem.value)                               # The message names the minimum
