@@ -1,246 +1,328 @@
-import json                  # NEW: drafts are stored as JSON text
-import sqlite3               # Python's built-in SQLite library; nothing to install
+import json
+import sqlite3
 from decimal import Decimal
-from pathlib import Path                                                # Lets us find schema.sql whatever folder we run from
+from pathlib import Path
 
-import config                                                           # Our settings file
-from errors import RateUnavailableError                                 # The error to raise when no rate exists
+import config
+from errors import RateUnavailableError
 
-BASE_DIR = Path(__file__).parent                                        # The folder this file lives in
+BASE_DIR = Path(__file__).parent
 
-def get_connection(db_file=None):                                       # Open the database; db_file lets tests use a different file
-    """Open a connection to the SQLite database."""                     # Docstring
-    connection = sqlite3.connect(db_file or config.DB_FILE)             # Use the given file, or the default from config
-    connection.row_factory = sqlite3.Row                                # Lets us read a column by name, row["amount"]
-    connection.execute("PRAGMA foreign_keys = ON")                      # Turn on foreign keys for this connection
-    return connection                                                   # Give the open connection to the caller
+def get_connection(db_file=None):
+    connection = sqlite3.connect(db_file or config.DB_FILE)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys = ON")
+    return connection
 
-def init_db(db_file=None):                                              # Create every table and fill the reference data
-    """Create the tables from schema.sql and add the starting data."""  # Docstring
-    script = (BASE_DIR / "schema.sql").read_text(encoding="utf-8")      # Read the whole SQL file as text
-    connection = get_connection(db_file)                                # Open the database
-    connection.executescript(script)                                    # Run every statement in the file
-    seed_reference_data(connection)                                     # Add currencies, rates, plans, tax rules and the demo user
-    connection.commit()                                                 # Save the changes permanently
-    connection.close()                                                  # Release the file
+def init_db(db_file=None):
+    script = (BASE_DIR / "schema.sql").read_text(encoding="utf-8")
+    connection = get_connection(db_file)
+    connection.executescript(script)
+    seed_reference_data(connection)
+    connection.commit()
+    connection.close()
 
-def seed_reference_data(connection):                                    # Add starting rows; safe to run twice
-    """Insert currencies, sample rates, plans, tax rules and the demo user."""  # Docstring
-    for code in config.CURRENCIES:                                      # Go through the six codes
-        name, symbol = config.CURRENCY_NAMES[code]                      # Look up the name and symbol
-        connection.execute(                                             # Start an INSERT statement
-            "INSERT OR IGNORE INTO currency (currency_code, name, symbol) VALUES (?, ?, ?)",  # OR IGNORE skips it if the row exists; ? are placeholders
-            (code, name, symbol),                                       # The values that replace the three ? marks
-        )                                                               # End of the INSERT
-        has_rate = connection.execute(                                  # Ask: do we already have a rate for this currency?
-            "SELECT 1 FROM exchange_rate WHERE currency_code = ?", (code,)  # (code,) is a one-item tuple
-        ).fetchone()                                                    # fetchone gives one row, or None if there is none
-        if has_rate is None:                                            # Only add a rate when there is none, so running twice adds nothing
-            connection.execute(                                         # Start an INSERT statement
-                "INSERT INTO exchange_rate (currency_code, rate_to_usd, source) VALUES (?, ?, 'sample')",  # The source is the fixed word sample
-                (code, float(config.SAMPLE_RATES_TO_USD[code])),        # Turn the text rate into a number for SQLite
-            )                                                           # End of the INSERT
-    for plan in config.PLANS:                                           # Go through the three plans
-        connection.execute(                                             # Start an INSERT statement
-            "INSERT OR IGNORE INTO investment_plan VALUES (?, ?, ?, ?, ?, ?, ?, ?)",  # Eight values, in the same order as the table columns
-            plan,                                                       # The whole tuple fills the eight ? marks
-        )                                                               # End of the INSERT
-    has_rules = connection.execute("SELECT 1 FROM tax_rule").fetchone()  # Are there tax rules already?
-    if has_rules is None:                                               # Only add them once
-        connection.executemany(                                         # Run the same INSERT for many rows
-            "INSERT INTO tax_rule (plan_id, profit_above, tax_rate_pct) VALUES (?, ?, ?)",  # One tax rule
-            config.TAX_RULES,                                           # The list of rules
-        )                                                               # End of the INSERT
-    connection.execute(                                                 # Add the demo user that owns every transaction until login exists
-        "INSERT OR IGNORE INTO user (user_id, name, email, password_hash) VALUES (?, 'Demo user', 'demo@efl.test', 'not-set')",  # Fixed id, so it is added once
-        (config.DEMO_USER_ID,),                                         # The id from config
-    )                                                                   # End of the INSERT
+def seed_reference_data(connection):
+    for code in config.CURRENCIES:
+        name, symbol = config.CURRENCY_NAMES[code]
+        connection.execute(
+            "INSERT OR IGNORE INTO currency (currency_code, name, symbol) VALUES (?, ?, ?)",
+            (code, name, symbol),
+        )
+        has_rate = connection.execute(
+            "SELECT 1 FROM exchange_rate WHERE currency_code = ?", (code,)
+        ).fetchone()
+        if has_rate is None:
+            connection.execute(
+                "INSERT INTO exchange_rate (currency_code, rate_to_usd, source) VALUES (?, ?, 'sample')",
+                (code, float(config.SAMPLE_RATES_TO_USD[code])),
+            )
+    for plan in config.PLANS:
+        connection.execute(
+            "INSERT OR IGNORE INTO investment_plan VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            plan,
+        )
+    has_rules = connection.execute("SELECT 1 FROM tax_rule").fetchone()
+    if has_rules is None:
+        connection.executemany(
+            "INSERT INTO tax_rule (plan_id, profit_above, tax_rate_pct) VALUES (?, ?, ?)",
+            config.TAX_RULES,
+        )
+    connection.execute(
+        "INSERT OR IGNORE INTO user (user_id, name, email, password_hash) VALUES (?, 'Demo user', 'demo@efl.test', 'not-set')",
+        (config.DEMO_USER_ID,),
+    )
 
-def get_rate_to_usd(currency_code, db_file=None):                       # Latest rate for one currency, as US dollars per unit
-    """Return the newest rate for this currency as a Decimal."""        # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # try/finally makes sure we always close the connection
-        row = connection.execute(                                       # Start a SELECT statement
-            "SELECT rate_to_usd FROM exchange_rate WHERE currency_code = ? ORDER BY fetched_at DESC, rate_id DESC LIMIT 1",  # Newest first, take one row
-            (currency_code,),                                           # The currency to look up
-        ).fetchone()                                                    # One row, or None
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    if row is None:                                                     # No rate stored for this currency
-        raise RateUnavailableError("No exchange rate is available for " + str(currency_code) + ".")  # Stop with a clear error; the route turns it into a message
-    return Decimal(str(row["rate_to_usd"]))                             # str() first, so Decimal gets 1.3 and not 1.3000000000000000444
+def get_rate_to_usd(currency_code, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute(
+            "SELECT rate_to_usd FROM exchange_rate WHERE currency_code = ? ORDER BY fetched_at DESC, rate_id DESC LIMIT 1",
+            (currency_code,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        raise RateUnavailableError("No exchange rate is available for " + str(currency_code) + ".")
+    return Decimal(str(row["rate_to_usd"]))
 
-def list_currencies(db_file=None):                                      # The currencies to show in the drop-down lists
-    """Return the active currencies as a list of dictionaries."""       # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        rows = connection.execute(                                      # Start a SELECT statement
-            "SELECT currency_code, name, symbol FROM currency WHERE is_active = 1 ORDER BY currency_code"  # Only active currencies, in code order
-        ).fetchall()                                                    # fetchall gives every row
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    return [{"code": r["currency_code"], "name": r["name"], "symbol": r["symbol"]} for r in rows]  # Turn each row into a plain dictionary Flask can send as JSON
+def list_currencies(db_file=None):
+    connection = get_connection(db_file)
+    try:
+        rows = connection.execute(
+            "SELECT currency_code, name, symbol FROM currency WHERE is_active = 1 ORDER BY currency_code"
+        ).fetchall()
+    finally:
+        connection.close()
+    return [{"code": r["currency_code"], "name": r["name"], "symbol": r["symbol"]} for r in rows]
 
-def save_transaction(user_id, transaction, db_file=None):               # Store one finished conversion and return its id
-    """Insert a conversion transaction and return its id."""            # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        cursor = connection.execute(                                    # Start an INSERT statement
-            "INSERT INTO conversion_transaction (user_id, from_currency, to_currency, amount, rate_used, fee_percent, fee_usd, converted_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",  # Eight columns, eight ? marks
-            (                                                           # The eight values, in the same order
-                user_id,                                                # Who converted
-                transaction["from_currency"],                           # Currency sold
-                transaction["to_currency"],                             # Currency bought
-                float(transaction["amount"]),                           # SQLite stores REAL, so Decimal becomes float
-                float(transaction["rate_used"]),                        # The rate we used
-                float(transaction["fee_percent"]),                      # Band percentage
-                float(transaction["fee_usd"]),                          # Fee in US dollars
-                float(transaction["converted_amount"]),                 # What the user receives
-            ),                                                          # End of the values
-        )                                                               # End of the INSERT
-        connection.commit()                                             # Save permanently
-        return cursor.lastrowid                                         # The auto number SQLite gave the new row
-    finally:                                                            # Runs even after the return above
-        connection.close()                                              # Release the file
+def save_transaction(user_id, transaction, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        cursor = connection.execute(
+            "INSERT INTO conversion_transaction (user_id, from_currency, to_currency, amount, rate_used, fee_percent, fee_usd, converted_amount) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                user_id,
+                transaction["from_currency"],
+                transaction["to_currency"],
+                float(transaction["amount"]),
+                float(transaction["rate_used"]),
+                float(transaction["fee_percent"]),
+                float(transaction["fee_usd"]),
+                float(transaction["converted_amount"]),
+            ),
+        )
+        connection.commit()
+        return cursor.lastrowid
+    finally:
+        connection.close()
 
-def get_plans(db_file=None):                                            # Load the investment plans with their tax rules
-    """Return the plans as dictionaries holding Decimal values."""      # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        plan_rows = connection.execute("SELECT * FROM investment_plan ORDER BY plan_id").fetchall()  # All plans in order
-        rule_rows = connection.execute("SELECT plan_id, profit_above, tax_rate_pct FROM tax_rule ORDER BY plan_id, profit_above").fetchall()  # All tax rules, lowest threshold first
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    plans = []                                                          # We build the answer here
-    for row in plan_rows:                                               # One loop per plan
-        rules = [(Decimal(str(r["profit_above"])), Decimal(str(r["tax_rate_pct"]))) for r in rule_rows if r["plan_id"] == row["plan_id"]]  # This plan's rules as (threshold, percent) pairs
-        plans.append({                                                  # Add one dictionary per plan
-            "plan_id": row["plan_id"],                                  # Plan number
-            "name": row["name"],                                        # Plan name
-            "max_per_year": None if row["max_per_year"] is None else Decimal(str(row["max_per_year"])),  # None stays None (unlimited)
-            "min_monthly": Decimal(str(row["min_monthly"])),            # Minimum monthly amount
-            "min_lump_sum": None if row["min_lump_sum"] is None else Decimal(str(row["min_lump_sum"])),  # None stays None (N/A)
-            "return_min_pct": Decimal(str(row["return_min_pct"])),      # Lowest yearly return
-            "return_max_pct": Decimal(str(row["return_max_pct"])),      # Highest yearly return
-            "monthly_fee_pct": Decimal(str(row["monthly_fee_pct"])),    # Monthly fee
-            "tax_rules": rules,                                         # The tax rules for this plan
-        })                                                              # End of the dictionary
-    return plans                                                        # The finished list
+def get_plans(db_file=None):
+    """Return the plans as dictionaries holding Decimal values."""
+    connection = get_connection(db_file)
+    try:
+        plan_rows = connection.execute("SELECT * FROM investment_plan ORDER BY plan_id").fetchall()
+        rule_rows = connection.execute("SELECT plan_id, profit_above, tax_rate_pct FROM tax_rule ORDER BY plan_id, profit_above").fetchall()
+    finally:
+        connection.close()
+    plans = []
+    for row in plan_rows:
+        rules = [(Decimal(str(r["profit_above"])), Decimal(str(r["tax_rate_pct"]))) for r in rule_rows if r["plan_id"] == row["plan_id"]]
+        plans.append({
+            "plan_id": row["plan_id"],
+            "name": row["name"],
+            "max_per_year": None if row["max_per_year"] is None else Decimal(str(row["max_per_year"])),
+            "min_monthly": Decimal(str(row["min_monthly"])),
+            "min_lump_sum": None if row["min_lump_sum"] is None else Decimal(str(row["min_lump_sum"])),
+            "return_min_pct": Decimal(str(row["return_min_pct"])),
+            "return_max_pct": Decimal(str(row["return_max_pct"])),
+            "monthly_fee_pct": Decimal(str(row["monthly_fee_pct"])),
+            "tax_rules": rules,
+        })
+    return plans
 
-def save_quote(user_id, plan_id, recommended_plan_id, lump_sum, monthly, rows, db_file=None):  # Store a quote and its results
-    """Insert a quote and its result rows, and return the quote id."""  # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        cursor = connection.execute(                                    # Insert the quote row first
-            "INSERT INTO quote (user_id, plan_id, recommended_plan_id, lump_sum, monthly_amount) VALUES (?, ?, ?, ?, ?)",  # Five values
-            (user_id, plan_id, recommended_plan_id, float(lump_sum), float(monthly)),  # The values, with money as numbers
-        )                                                               # End of the INSERT
-        quote_id = cursor.lastrowid                                     # The id SQLite just gave the quote
-        for row in rows:                                                # Then one result row for each scenario and time frame
-            connection.execute(                                         # Insert a result row
-                "INSERT INTO quote_result (quote_id, scenario, years, final_value, total_profit, total_fees, total_tax) VALUES (?, ?, ?, ?, ?, ?, ?)",  # Seven values
-                (quote_id, row["scenario"], row["years"], float(row["final_value"]), float(row["total_profit"]), float(row["total_fees"]), float(row["total_tax"])),  # The values for this row
-            )                                                           # End of the INSERT
-        connection.commit()                                             # Save everything together
-        return quote_id                                                 # Give the id back
-    finally:                                                            # Runs even after the return above
-        connection.close()                                              # Release the file
+def save_quote(user_id, plan_id, recommended_plan_id, lump_sum, monthly, rows, db_file=None):
+    """Insert a quote and its result rows, and return the quote id."""
+    connection = get_connection(db_file)
+    try:
+        cursor = connection.execute(
+            "INSERT INTO quote (user_id, plan_id, recommended_plan_id, lump_sum, monthly_amount) VALUES (?, ?, ?, ?, ?)",
+            (user_id, plan_id, recommended_plan_id, float(lump_sum), float(monthly)),
+        )
+        quote_id = cursor.lastrowid
+        for row in rows:
+            connection.execute(
+                "INSERT INTO quote_result (quote_id, scenario, years, final_value, total_profit, total_fees, total_tax) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (quote_id, row["scenario"], row["years"], float(row["final_value"]), float(row["total_profit"]), float(row["total_fees"]), float(row["total_tax"])),
+            )
+        connection.commit()
+        return quote_id
+    finally:
+        connection.close()
 
-def mark_quote_saved(quote_id, user_id, db_file=None):                  # The user pressed Save on a quote
-    """Set is_saved for this user's quote. Return True if a row changed."""  # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        cursor = connection.execute("UPDATE quote SET is_saved = 1 WHERE quote_id = ? AND user_id = ?", (quote_id, user_id))  # The AND user_id part stops people saving each other's quotes
-        connection.commit()                                             # Save permanently
-        return cursor.rowcount == 1                                     # rowcount is how many rows changed
-    finally:                                                            # Runs even after the return above
-        connection.close()                                              # Release the file
+def mark_quote_saved(quote_id, user_id, db_file=None):
+    """Set is_saved for this user's quote. Return True if a row changed."""
+    connection = get_connection(db_file)
+    try:
+        cursor = connection.execute("UPDATE quote SET is_saved = 1 WHERE quote_id = ? AND user_id = ?", (quote_id, user_id))
+        connection.commit()
+        return cursor.rowcount == 1
+    finally:
+        connection.close()
 
-def log_error(source, message, db_file=None):                           # Add one row to the error_log table
-    """Record an internal error with its diagnostic data."""            # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        connection.execute("INSERT INTO error_log (source, message) VALUES (?, ?)", (source, message))  # Store where it failed and what happened
-        connection.commit()                                             # Save permanently
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
+def log_error(source, message, db_file=None):
+    """Record an internal error with its diagnostic data."""
+    connection = get_connection(db_file)
+    try:
+        connection.execute("INSERT INTO error_log (source, message) VALUES (?, ?)", (source, message))
+        connection.commit()
+    finally:
+        connection.close()
 
-def create_user(name, email, phone, password_hash, db_file=None):       # Add a customer and keep their contact details
-    """Insert a user and return the new user id."""                     # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        cursor = connection.execute("INSERT INTO user (name, email, phone, password_hash) VALUES (?, ?, ?, ?)", (name, email, phone, password_hash))  # Four values; UNIQUE on email stops duplicates
-        connection.commit()                                             # Save permanently
-        return cursor.lastrowid                                         # The new user's id
-    finally:                                                            # Runs even after the return above
-        connection.close()                                              # Release the file
+def create_user(name, email, phone, password_hash, db_file=None):
+    """Insert a user and return the new user id."""
+    connection = get_connection(db_file)
+    try:
+        cursor = connection.execute("INSERT INTO user (name, email, phone, password_hash) VALUES (?, ?, ?, ?)", (name, email, phone, password_hash))
+        connection.commit()
+        return cursor.lastrowid
+    finally:
+        connection.close()
 
-def get_user_by_email(email, db_file=None):                             # Find a user for login
-    """Return the user row as a dictionary, or None."""                 # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        row = connection.execute("SELECT user_id, name, email, password_hash FROM user WHERE email = ?", (email,)).fetchone()  # Look the email up; the ? placeholder blocks SQL injection
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    return dict(row) if row else None                                   # A dictionary, or None when there is no such user
+def get_user_by_email(email, db_file=None):
+    """Return the user row as a dictionary, or None."""
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT user_id, name, email, password_hash FROM user WHERE email = ?", (email,)).fetchone()
+    finally:
+        connection.close()
+    return dict(row) if row else None
 
-def has_fresh_live_rate(db_file=None):                                  # Did we load live rates recently?
-    """True if a live rate younger than RATE_MAX_AGE_MINUTES is stored."""  # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        row = connection.execute("SELECT 1 FROM exchange_rate WHERE source = 'live' AND fetched_at > datetime('now', ?) LIMIT 1", ("-" + str(config.RATE_MAX_AGE_MINUTES) + " minutes",)).fetchone()  # datetime('now', '-10 minutes') is ten minutes ago
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    return row is not None                                              # True when a row was found
+def has_fresh_live_rate(db_file=None):
+    """True if a live rate younger than RATE_MAX_AGE_MINUTES is stored."""
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT 1 FROM exchange_rate WHERE source = 'live' AND fetched_at > datetime('now', ?) LIMIT 1", ("-" + str(config.RATE_MAX_AGE_MINUTES) + " minutes",)).fetchone()
+    finally:
+        connection.close()
+    return row is not None
 
-def save_rates(rates, source, db_file=None):                            # Store a new set of rates
-    """Insert one exchange_rate row for each currency in the dictionary."""  # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        for code, rate in rates.items():                                # One row per currency
-            connection.execute("INSERT INTO exchange_rate (currency_code, rate_to_usd, source) VALUES (?, ?, ?)", (code, float(rate), source))  # Add the rate with its source
-        connection.commit()                                             # Save everything together
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
+def save_rates(rates, source, db_file=None):
+    """Insert one exchange_rate row for each currency in the dictionary."""
+    connection = get_connection(db_file)
+    try:
+        for code, rate in rates.items():
+            connection.execute("INSERT INTO exchange_rate (currency_code, rate_to_usd, source) VALUES (?, ?, ?)", (code, float(rate), source))
+        connection.commit()
+    finally:
+        connection.close()
 
-def latest_rate_time(db_file=None):                                     # When were the stored rates last updated?
-    """Return the newest fetched_at text, or None."""                   # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        row = connection.execute("SELECT MAX(fetched_at) AS latest FROM exchange_rate").fetchone()  # The newest time
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    return row["latest"]                                                # Text such as 2026-11-05 10:30:00, or None
+def latest_rate_time(db_file=None):
+    """Return the newest fetched_at text, or None."""
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT MAX(fetched_at) AS latest FROM exchange_rate").fetchone()
+    finally:
+        connection.close()
+    return row["latest"]
 
-def get_history(user_id, db_file=None):                                 # Everything the history page shows
-    """Return the user's transactions and saved quotes."""              # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        transactions = connection.execute("SELECT transaction_id, created_at, from_currency, to_currency, amount, rate_used, fee_percent, fee_usd, converted_amount FROM conversion_transaction WHERE user_id = ? ORDER BY transaction_id DESC LIMIT 100", (user_id,)).fetchall()  # Newest first, at most 100
-        quote_rows = connection.execute("SELECT q.quote_id, q.created_at, q.lump_sum, q.monthly_amount, p.name AS plan_name FROM quote q JOIN investment_plan p ON p.plan_id = q.plan_id WHERE q.user_id = ? AND q.is_saved = 1 ORDER BY q.quote_id DESC", (user_id,)).fetchall()  # Saved quotes only; JOIN adds the plan name
-        quotes_out = []                                                 # We build the quotes here
-        for q in quote_rows:                                            # One loop per saved quote
-            results = connection.execute("SELECT scenario, years, final_value, total_profit, total_fees, total_tax FROM quote_result WHERE quote_id = ? ORDER BY scenario, years", (q["quote_id"],)).fetchall()  # Its result rows
-            quotes_out.append({**dict(q), "results": [dict(r) for r in results]})  # Quote plus results as one dictionary
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    return {"transactions": [dict(t) for t in transactions], "quotes": quotes_out}  # Both lists as plain dictionaries
+def get_history(user_id, db_file=None):
+    """Return the user's transactions and saved quotes."""
+    connection = get_connection(db_file)
+    try:
+        transactions = connection.execute("SELECT transaction_id, created_at, from_currency, to_currency, amount, rate_used, fee_percent, fee_usd, converted_amount FROM conversion_transaction WHERE user_id = ? ORDER BY transaction_id DESC LIMIT 100", (user_id,)).fetchall()
+        quote_rows = connection.execute("SELECT q.quote_id, q.created_at, q.lump_sum, q.monthly_amount, p.name AS plan_name FROM quote q JOIN investment_plan p ON p.plan_id = q.plan_id WHERE q.user_id = ? AND q.is_saved = 1 ORDER BY q.quote_id DESC", (user_id,)).fetchall()
+        quotes_out = []
+        for q in quote_rows:
+            results = connection.execute("SELECT scenario, years, final_value, total_profit, total_fees, total_tax FROM quote_result WHERE quote_id = ? ORDER BY scenario, years", (q["quote_id"],)).fetchall()
+            quotes_out.append({**dict(q), "results": [dict(r) for r in results]})
+    finally:
+        connection.close()
+    return {"transactions": [dict(t) for t in transactions], "quotes": quotes_out}
 
-def save_draft(user_id, form_data, db_file=None):                       # Keep unsaved form data
-    """Insert a draft and return its id."""                             # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        cursor = connection.execute("INSERT INTO draft (user_id, form_data) VALUES (?, ?)", (user_id, json.dumps(form_data)))  # The form values are stored as JSON text
-        connection.commit()                                             # Save permanently
-        return cursor.lastrowid                                         # The draft id
-    finally:                                                            # Runs even after the return above
-        connection.close()                                              # Release the file
+def save_draft(user_id, form_data, db_file=None):
+    """Insert a draft and return its id."""
+    connection = get_connection(db_file)
+    try:
+        cursor = connection.execute("INSERT INTO draft (user_id, form_data) VALUES (?, ?)", (user_id, json.dumps(form_data)))
+        connection.commit()
+        return cursor.lastrowid
+    finally:
+        connection.close()
 
-def get_draft(draft_id, user_id, db_file=None):                         # Load a draft that belongs to this user
-    """Return the draft's form data, or None."""                        # Docstring
-    connection = get_connection(db_file)                                # Open the database
-    try:                                                                # Always close the connection
-        row = connection.execute("SELECT form_data FROM draft WHERE draft_id = ? AND user_id = ?", (draft_id, user_id)).fetchone()  # The user_id check stops people reading each other's drafts
-    finally:                                                            # Runs whether or not an error happened
-        connection.close()                                              # Release the file
-    return json.loads(row["form_data"]) if row else None                # Turn the stored JSON back into a dictionary
+def get_draft(draft_id, user_id, db_file=None):
+    """Return the draft's form data, or None."""
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT form_data FROM draft WHERE draft_id = ? AND user_id = ?", (draft_id, user_id)).fetchone()
+    finally:
+        connection.close()
+    return json.loads(row["form_data"]) if row else None
+
+def latest_rate_info(db_file=None):
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT fetched_at, source FROM exchange_rate ORDER BY fetched_at DESC, rate_id DESC LIMIT 1").fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        return {"fetched_at": None, "source": None}
+    return {"fetched_at": row["fetched_at"], "source": row["source"]}
+
+
+def get_dashboard(user_id, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        user = connection.execute("SELECT name FROM user WHERE user_id = ?", (user_id,)).fetchone()
+        recent = connection.execute("SELECT created_at, from_currency, to_currency, amount, converted_amount FROM conversion_transaction WHERE user_id = ? ORDER BY transaction_id DESC LIMIT 5", (user_id,)).fetchall()
+        saved = connection.execute("SELECT COUNT(*) AS total FROM quote WHERE user_id = ? AND is_saved = 1", (user_id,)).fetchone()
+        latest = connection.execute("SELECT p.name FROM quote q JOIN investment_plan p ON p.plan_id = q.recommended_plan_id WHERE q.user_id = ? ORDER BY q.quote_id DESC LIMIT 1", (user_id,)).fetchone()
+    finally:
+        connection.close()
+    return {
+        "name": user["name"] if user else "",
+        "recent": [dict(r) for r in recent],
+        "saved_quotes": saved["total"],
+        "recommended_plan": latest["name"] if latest else None,
+    }
+
+
+def record_failed_login(email, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        connection.execute("DELETE FROM login_attempt WHERE attempted_at < datetime('now', '-1 day')")
+        connection.execute("INSERT INTO login_attempt (email) VALUES (?)", (email,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def count_recent_failures(email, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT COUNT(*) AS total FROM login_attempt WHERE email = ? AND attempted_at > datetime('now', ?)", (email, "-" + str(config.LOGIN_LOCK_MINUTES) + " minutes")).fetchone()
+    finally:
+        connection.close()
+    return row["total"]
+
+
+def clear_failed_logins(email, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        connection.execute("DELETE FROM login_attempt WHERE email = ?", (email,))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def create_password_reset(user_id, token_hash, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        connection.execute("INSERT INTO password_reset (user_id, token_hash, expires_at) VALUES (?, ?, datetime('now', ?))", (user_id, token_hash, "+" + str(config.RESET_TOKEN_MINUTES) + " minutes"))
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def reset_password_with_token(token_hash, password_hash, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        row = connection.execute("SELECT r.user_id, u.email FROM password_reset r JOIN user u ON u.user_id = r.user_id WHERE r.token_hash = ? AND r.used = 0 AND r.expires_at > datetime('now')", (token_hash,)).fetchone()
+        if row is None:
+            return None
+        connection.execute("UPDATE user SET password_hash = ? WHERE user_id = ?", (password_hash, row["user_id"]))
+        connection.execute("UPDATE password_reset SET used = 1 WHERE user_id = ?", (row["user_id"],))
+        connection.execute("DELETE FROM login_attempt WHERE email = ?", (row["email"],))
+        connection.commit()
+        return row["email"]
+    finally:
+        connection.close()
+
+def delete_transaction(transaction_id, user_id, db_file=None):
+    connection = get_connection(db_file)
+    try:
+        cursor = connection.execute("DELETE FROM conversion_transaction WHERE transaction_id = ? AND user_id = ?", (transaction_id, user_id))
+        connection.commit()
+        return cursor.rowcount == 1
+    finally:
+        connection.close()

@@ -1,23 +1,30 @@
-<!DOCTYPE html>                                                         <!-- Tells the browser this is an HTML5 page -->
-<html lang="en">                                                        <!-- Root element; lang helps screen readers -->
-<head>                                                                  <!-- Page information that is not shown on the page -->
-  <meta charset="UTF-8">                                                <!-- Allows symbols such as £ and € -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">  <!-- Makes the page fit a phone screen -->
-  <title>{% block title %}EFL{% endblock %}</title>                     {# Browser tab text; each page fills the title block #}
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">  {# Load the stylesheet; url_for builds the right path #}
-</head>                                                                 <!-- End of head -->
-<body>                                                                  <!-- Everything visible -->
-  <nav>                                                                 <!-- The menu bar -->
-    <a href="/">Home</a>                                                <!-- Link to the home page -->
-    <a href="/login">Login</a>                                          <!-- Link to the login page -->
-    <a href="/converter">Converter</a>                                  <!-- Link to the converter -->
-    <a href="/quote-page">Quote</a>                                     <!-- Link to the quote page -->
-    <a href="/history-page">History</a>                                 <!-- Link to the history page -->
-  </nav>                                                                <!-- End of the menu bar -->
-  <main>                                                                <!-- The main content area -->
-    {% block content %}{% endblock %}                                   {# Each page puts its own content here #}
-  </main>                                                               <!-- End of main -->
-  <script src="{{ url_for('static', filename='js/app.js') }}"></script>  {# Shared JavaScript helpers, loaded on every page #}
-  {% block scripts %}{% endblock %}                                     {# Pages add their own script files here #}
-</body>                                                                 <!-- End of body -->
-</html>                                                                 <!-- End of the page -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}EFL{% endblock %}</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+  <nav>
+    <a class="logo" href="/">EFL</a>
+    <a href="/" {% if request.path == '/' %}class="active"{% endif %}>Home</a>
+    <a href="/dashboard" {% if request.path == '/dashboard' %}class="active"{% endif %}>Dashboard</a>
+    <a href="/converter" {% if request.path == '/converter' %}class="active"{% endif %}>Converter</a>
+    <a href="/quote-page" {% if request.path == '/quote-page' %}class="active"{% endif %}>Quote</a>
+    <a href="/history-page" {% if request.path == '/history-page' %}class="active"{% endif %}>History</a>
+    {% if session.get("user_id") %}
+    <a href="#" id="logout-link">Sign out</a>
+    {% else %}
+    <a href="/login" {% if request.path in ['/login', '/register', '/forgot-password', '/reset-password'] %}class="active"{% endif %}>Sign in</a>
+    {% endif %}
+  </nav>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

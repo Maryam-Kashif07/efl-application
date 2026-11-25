@@ -1,44 +1,59 @@
-{% extends "base.html" %}                                               {# Use the shared page layout #}
-{% block title %}Savings quote{% endblock %}                            {# Text for the browser tab #}
-{% block content %}                                                     {# Start of this page's content #}
-  <h1>Savings quote</h1>                                                <!-- Main heading -->
-  <form id="quote-form">                                                <!-- The form; quote.js finds it by this id -->
-    <label for="lump">Initial lump sum (GBP)</label>                    <!-- Label for the lump sum -->
-    <input id="lump" type="text" inputmode="decimal" value="0.00" required>  <!-- Starts at 0.00; text type so the server does the validating -->
-    <label for="monthly">Monthly amount (GBP)</label>                   <!-- Label for the monthly amount -->
-    <input id="monthly" type="text" inputmode="decimal" required>       <!-- Monthly amount box -->
-    <label for="plan">Investment type</label>                           <!-- Label for the plan list -->
-    <select id="plan">                                                  <!-- Drop-down list of plans -->
-      {% for plan in plans %}                                           {# Repeat for each plan the server sent #}
-      <option value="{{ plan.plan_id }}">{{ plan.name }}</option>       {# One option per plan; the double braces are escaped for safety #}
-      {% endfor %}                                                      {# End of the repeat #}
-    </select>                                                           <!-- End of the list -->
-    <button type="submit">Get quote</button>                            <!-- Sends the form -->
-  </form>                                                               <!-- End of the form -->
-  <p id="error" class="error" role="alert"></p>                         <!-- Area for error messages -->
-  <section id="quote-output" hidden>                                    <!-- Results area; hidden until there is a quote -->
-    <p id="recommendation" class="result"></p>                          <!-- The recommended plan -->
-    <p id="loss-warning" class="warning"></p>                           <!-- A warning when fees exceed returns -->
-    <h2>Your quote</h2>                                                 <!-- Heading for the table -->
-    <table id="quote-table">                                            <!-- Numbers for the plan you chose -->
-      <thead>                                                           <!-- Table heading row -->
-        <tr><th>Years</th><th>Scenario</th><th>Paid in</th><th>Final value</th><th>Profit</th><th>Fees</th><th>Tax</th></tr>  <!-- One column for each figure the brief asks for -->
-      </thead>                                                          <!-- End of the heading -->
-      <tbody></tbody>                                                   <!-- quote.js fills the rows -->
-    </table>                                                            <!-- End of the table -->
-    <h2>Chart: final value</h2>                                         <!-- Heading for the chart -->
-    <svg id="quote-chart" viewBox="0 0 600 300" role="img" aria-label="Bar chart of the minimum and maximum final value after 1, 5 and 10 years"></svg>  <!-- A drawing area; quote.js draws the bars; aria-label describes it for screen readers -->
-    <h2>Compare all plans</h2>                                          <!-- Heading for the comparison -->
-    <table id="compare-table">                                          <!-- One row per plan -->
-      <thead>                                                           <!-- Table heading row -->
-        <tr><th>Plan</th><th>Available?</th><th>Final value after 10 years (best case)</th></tr>  <!-- Three columns -->
-      </thead>                                                          <!-- End of the heading -->
-      <tbody></tbody>                                                   <!-- quote.js fills the rows -->
-    </table>                                                            <!-- End of the table -->
-    <button id="save-quote" type="button">Save this quote</button>      <!-- Marks the quote as saved -->
-    <p id="save-message" class="result"></p>                            <!-- Confirmation message -->
-  </section>                                                            <!-- End of the results area -->
-{% endblock %}                                                          {# End of the content block #}
-{% block scripts %}                                                     {# Start of this page's script files #}
-  <script src="{{ url_for('static', filename='js/quote.js') }}"></script>  {# This page's own JavaScript #}
-{% endblock %}                                                          {# End of the scripts block #}
+{% extends "base.html" %}
+{% block title %}Savings quote{% endblock %}
+{% block content %}
+  <h1>Savings quote</h1>
+  <p class="lead">See the minimum and maximum return after 1, 5 and 10 years, with fees and tax.</p>
+  <div class="layout layout-quote">
+    <form id="quote-form">
+      <label for="lump">Initial lump sum (GBP)</label>
+      <input id="lump" type="text" inputmode="decimal" value="0.00" required>
+      <label for="monthly">Monthly amount (GBP)</label>
+      <input id="monthly" type="text" inputmode="decimal" required>
+      <label for="plan">Investment type</label>
+      <select id="plan">
+        {% for plan in plans %}
+        <option value="{{ plan.plan_id }}">{{ plan.name }}</option>
+        {% endfor %}
+      </select>
+      <p id="error" class="error" role="alert"></p>
+      <button type="submit">Get quote</button>
+    </form>
+    <div class="stack">
+      <div id="quote-placeholder" class="card placeholder">
+        <div class="big">Your quote</div>
+        <p>Fill in the form to see your table, chart and recommended plan.</p>
+      </div>
+      <section id="quote-output" class="stack" hidden>
+        <p id="recommendation" class="banner"></p>
+        <p id="loss-warning" class="warning"></p>
+        <div class="card">
+          <h2>Your quote</h2>
+          <table id="quote-table" class="compact">
+            <thead>
+              <tr><th>Years</th><th>Scenario</th><th>Paid in</th><th>Final value</th><th>Profit</th><th>Fees</th><th>Tax</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="card">
+          <h2>Final value</h2>
+          <svg id="quote-chart" viewBox="0 0 600 300" role="img" aria-label="Bar chart of the minimum and maximum final value after 1, 5 and 10 years"></svg>
+        </div>
+        <div class="card">
+          <h2>Compare all plans</h2>
+          <table id="compare-table" class="compact">
+            <thead>
+              <tr><th>Plan</th><th>Available?</th><th>Final value after 10 years (best case)</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <button id="save-quote" type="button">Save this quote</button>
+        <p id="save-message" class="result"></p>
+      </section>
+    </div>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/quote.js') }}"></script>
+{% endblock %}

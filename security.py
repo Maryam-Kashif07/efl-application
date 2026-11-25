@@ -1,25 +1,62 @@
-from flask import jsonify, redirect, request, session                   # Flask tools: JSON replies, redirects, the request and the login cookie
+import time
+from urllib.parse import quote
 
-PUBLIC_ENDPOINTS = {"pages.index", "pages.login_page", "auth.register", "auth.login", "static"}  # The only routes anyone may open without logging in
+from flask import jsonify, redirect, request, session
 
-def current_user_id():                                                  # The id of the person making this request
-    """Return the signed-in user's id."""                               # Docstring
-    return session["user_id"]                                           # Stored in the signed cookie when the user logs in
+import config
 
-def require_login():                                                    # Runs before every request
-    """Block every route that is not public unless the user is signed in."""  # Docstring
-    if request.endpoint in PUBLIC_ENDPOINTS:                            # A public route
-        return None                                                     # Let the request through
-    if "user_id" in session:                                            # The user is signed in
-        return None                                                     # Let the request through
-    if request.path.startswith("/api/"):                                # An API call without a login
-        return jsonify({"error": "Please sign in first."}), 401         # 401 means Unauthorised
-    return redirect("/login")                                           # A page without a login: go to the login page
+PUBLIC_ENDPOINTS = {
+    "pages.index",
+    "pages.login_page",
+    "pages.register_page",
+    "pages.forgot_password_page",
+    "pages.reset_password_page",
+    "auth.register",
+    "auth.login",
+    "auth.forgot_password",
+    "auth.reset_password",
+    "static",
+}
 
-def add_security_headers(response):                                     # Runs after every request
-    """Ask the browser to apply safe defaults."""                       # Docstring
-    response.headers["X-Content-Type-Options"] = "nosniff"              # Stops the browser guessing file types
-    response.headers["X-Frame-Options"] = "DENY"                        # Stops other sites showing our pages in a frame
-    response.headers["Content-Security-Policy"] = "default-src 'self'"  # Only load scripts, styles and data from our own site
-    response.headers["Cache-Control"] = "no-store"                      # Do not keep private pages in the browser cache
-    return response                                                     # Send the response on
+INACTIVE_MESSAGE = "You were signed out because you were inactive. Please log in again."
+
+
+def current_user_id():
+    return session["user_id"]
+
+
+def signed_out_for_inactivity():
+    if "user_id" not in session:
+        return False
+    now = time.time()
+    last_seen = session.get("last_seen")
+    session["last_seen"] = now
+    if last_seen is not None and now - last_seen > config.SESSION_IDLE_MINUTES * 60:
+        session.clear()
+        return True
+    return False
+
+
+def require_login():
+    if request.endpoint is None or request.endpoint == "static":
+        return None
+    expired = signed_out_for_inactivity()
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+    if "user_id" in session:
+        return None
+    if request.path.startswith("/api/"):
+        if expired:
+            return jsonify({"error": INACTIVE_MESSAGE, "expired": True}), 401
+        return jsonify({"error": "Please sign in first."}), 401
+    if expired:
+        return redirect("/login?expired=1&next=" + quote(request.path))
+    return redirect("/login?next=" + quote(request.path))
+
+
+def add_security_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com"
+    response.headers["Cache-Control"] = "no-store"
+    return response

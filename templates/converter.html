@@ -1,20 +1,48 @@
-{% extends "base.html" %}                                               {# Use the shared page layout #}
-{% block title %}Currency converter{% endblock %}                       {# Text for the browser tab #}
-{% block content %}                                                     {# Start of this page's content #}
-  <h1>Currency converter</h1>                                           <!-- Main heading -->
-  <form id="convert-form">                                              <!-- The form; app.js finds it by this id -->
-    <label for="amount">Amount (300 to 5,000)</label>                   <!-- Label linked to the input below; shows the allowed range -->
-    <input id="amount" type="text" inputmode="decimal" required>        <!-- Text box; type text so our server does the validating -->
-    <label for="from">From</label>                                      <!-- Label for the first drop-down -->
-    <select id="from" class="currency-list"></select>                   <!-- Empty list; app.js fills it from /api/currencies -->
-    <label for="to">To</label>                                          <!-- Label for the second drop-down -->
-    <select id="to" class="currency-list"></select>                     <!-- Empty list; app.js fills it too -->
-    <button type="submit">Convert</button>                              <!-- Sends the form -->
-  </form>                                                               <!-- End of the form -->
-  <p id="warning" class="warning"></p>                                  <!-- Area for warnings, such as using an older rate (Thursday) -->
-  <p id="error" class="error" role="alert"></p>                         <!-- Area for error messages; role alert lets screen readers announce it -->
-  <p id="result" class="result"></p>                                    <!-- Area for the answer -->
-{% endblock %}                                                          {# End of the content block #}
-{% block scripts %}                                                     {# Start of this page's script files #}
-  <script src="{{ url_for('static', filename='js/converter.js') }}"></script>  {# This page's own JavaScript #}
-{% endblock %}                                                          {# End of the scripts block #}
+{% extends "base.html" %}
+{% block title %}Currency converter{% endblock %}
+{% block content %}
+  <h1>Currency converter</h1>
+  <p class="lead">Your entries are kept on this device if anything goes wrong.</p>
+  <div class="layout">
+    <form id="convert-form">
+      <label for="amount">Amount (300 to 5,000)</label>
+      <input id="amount" type="text" inputmode="decimal" required>
+      <p id="error" class="error" role="alert"></p>
+      <label for="from">From</label>
+      <select id="from" class="currency-list"></select>
+      <label for="to">To</label>
+      <select id="to" class="currency-list"></select>
+      <button type="submit">Convert</button>
+    </form>
+    <div class="stack">
+      <p id="warning" class="warning" role="status"></p>
+      <div id="placeholder" class="card placeholder">
+        <div class="big">300 to 5,000</div>
+        <p>Enter an amount in this range to see the rate, the fee and what you receive.</p>
+      </div>
+      <div id="result-card" class="card result-card" hidden>
+        <div id="result-from"></div>
+        <div id="result-to" class="big"></div>
+        <div class="line"><span>Rate</span><strong id="result-rate"></strong></div>
+        <div class="line"><span>Fee (<span id="result-percent"></span>%)</span><strong id="result-fee"></strong></div>
+        <div class="line line-total"><span>Total cost</span><strong id="result-total"></strong></div>
+        <p id="result-updated" class="updated"></p>
+      </div>
+      <div class="card">
+        <h2>Fee bands</h2>
+        <table id="fee-table">
+          <thead><tr><th>Amount</th><th>Fee</th></tr></thead>
+          <tbody>
+            <tr data-fee="3.5"><td>Up to 500</td><td>3.5%</td></tr>
+            <tr data-fee="2.7"><td>Over 500</td><td>2.7%</td></tr>
+            <tr data-fee="2.0"><td>Over 1,500</td><td>2.0%</td></tr>
+            <tr data-fee="1.5"><td>Over 2,500</td><td>1.5%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/converter.js') }}"></script>
+{% endblock %}

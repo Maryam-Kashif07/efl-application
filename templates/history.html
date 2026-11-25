@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}History and saved quotes{% endblock %}
+{% block content %}
+  <h1>History and saved quotes</h1>
+  <p class="lead">Your conversions and the quotes you saved.</p>
+  <p id="error" class="error" role="alert"></p>
+  <p id="history-message" class="result" role="status"></p>
+  <div class="tiles">
+    <div class="card tile">
+      <div class="tile-label">Conversions</div>
+      <div id="tile-count" class="tile-value">0</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Total fees paid</div>
+      <div id="tile-fees" class="tile-value">$0.00</div>
+    </div>
+    <div class="card tile">
+      <div class="tile-label">Saved quotes</div>
+      <div id="tile-quotes" class="tile-value">0</div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="tabs" role="group" aria-label="Show">
+      <button type="button" id="tab-converter" class="tab active" aria-pressed="true">Converter</button>
+      <button type="button" id="tab-quote" class="tab" aria-pressed="false">Quote</button>
+    </div>
+    <div class="filters">
+      <div id="currency-filter">
+        <label for="filter-currency">Currency</label>
+        <select id="filter-currency"><option value="">All currencies</option></select>
+      </div>
+      <div>
+        <label for="filter-dates">Dates</label>
+        <select id="filter-dates">
+          <option value="">All time</option>
+          <option value="1">Last 24 hours</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+      </div>
+      <div>
+        <label for="filter-sort">Sort by</label>
+        <select id="filter-sort">
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="largest">Largest amount</option>
+          <option value="smallest">Smallest amount</option>
+        </select>
+      </div>
+    </div>
+    <div id="table-scroll" class="table-scroll" tabindex="0" role="region" aria-label="History table">
+      <table id="history-table" class="scroll-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p id="no-rows" class="note" hidden></p>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/history.js') }}"></script>
+{% endblock %}

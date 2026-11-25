@@ -1,6 +1,32 @@
 {% extends "base.html" %}
 {% block title %}EFL{% endblock %}
 {% block content %}
-  <h1>EFL application</h1>
-  <p>Currency conversion and savings quotes.</p>
+  <section class="hero">
+    <h1>Savings and currency, made clear.</h1>
+    <p>Enomy-Finances Limited gives clear advice on budgeting, savings and investments. Convert currency with the fee shown first, and compare three plans with fees and tax included.</p>
+    <div class="actions">
+      {% if session.get("user_id") %}
+      <a class="btn btn-primary" href="/converter">Open converter</a>
+      <a class="btn btn-outline" href="/quote-page">Get a savings quote</a>
+      {% else %}
+      <a class="btn btn-primary" href="/login">Log in</a>
+      <a class="btn btn-outline" href="/register">Sign up</a>
+      {% endif %}
+    </div>
+  </section>
+  <h2 class="section-title">What the website gives you</h2>
+  <div class="services">
+    <a class="card service accent-indigo" href="/converter">
+      <h3>Currency converter</h3>
+      <p>Convert between six currencies and see the fee in US dollars before you decide.</p>
+    </a>
+    <a class="card service accent-amber" href="/quote-page">
+      <h3>Savings quotes</h3>
+      <p>Compare three plans with minimum and maximum returns after 1, 5 and 10 years, including fees and tax. We show the plan we recommend.</p>
+    </a>
+    <a class="card service accent-green" href="/history-page">
+      <h3>Saved history</h3>
+      <p>Keep your conversions and saved quotes in one secure place, ready when you come back.</p>
+    </a>
+  </div>
 {% endblock %}

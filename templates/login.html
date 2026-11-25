@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Log in{% endblock %}
+{% block content %}
+  <div class="auth-card">
+    <h1>Log in</h1>
+    <p class="lead">Log in to use the converter, savings quotes and your history.</p>
+    <p id="next-note" class="banner" hidden>Please log in to continue.</p>
+    <p id="expired-note" class="warning" hidden>You were signed out because you were inactive. Please log in again.</p>
+    <p id="reset-note" class="banner" hidden>Your password has been reset. Please log in.</p>
+    <form id="login-form">
+      <label for="login-email">Email</label>
+      <input id="login-email" type="email" autocomplete="username" required>
+      <label for="login-password">Password</label>
+      <input id="login-password" type="password" autocomplete="current-password" required>
+      <a class="text-link" href="/forgot-password">Forgot your password?</a>
+      <p id="error" class="error" role="alert"></p>
+      <button id="login-button" type="submit">Log in</button>
+    </form>
+    <p class="switch">Don't have an account? <a id="register-link" href="/register">Create an account</a></p>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/login.js') }}"></script>
+{% endblock %}

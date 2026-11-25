@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Create an account{% endblock %}
+{% block content %}
+  <div class="auth-card">
+    <h1>Create an account</h1>
+    <p class="lead">It only takes a minute.</p>
+    <p id="next-note" class="banner" hidden>Create an account to continue.</p>
+    <form id="register-form">
+      <label for="reg-name">Name</label>
+      <input id="reg-name" type="text" autocomplete="name" required>
+      <label for="reg-email">Email</label>
+      <input id="reg-email" type="email" autocomplete="email" required>
+      <label for="reg-phone">Phone (optional)</label>
+      <input id="reg-phone" type="tel" autocomplete="tel">
+      <label for="reg-password">Password</label>
+      <input id="reg-password" type="password" autocomplete="new-password" required>
+      <p class="hint">At least 8 characters, with a letter and a number.</p>
+      <p id="error" class="error" role="alert"></p>
+      <button type="submit">Create account</button>
+    </form>
+    <p class="switch">Already have an account? <a id="login-link" href="/login">Log in</a></p>
+  </div>
+{% endblock %}
+{% block scripts %}
+  <script src="{{ url_for('static', filename='js/register.js') }}"></script>
+{% endblock %}
